@@ -26,6 +26,7 @@ class GameScene extends Phaser.Scene {
         this.playerPowerUpType = 'none';
         this.bossActive = false;
         this.isGameOver = false;
+        this.lastFired = 0;
     }
 
     create() {
@@ -69,12 +70,12 @@ class GameScene extends Phaser.Scene {
         const enemySpawnRate = Math.max(200, 1300 - (this.level * 200));
         this.enemySpawner = this.time.addEvent({ delay: enemySpawnRate, callback: this.spawnEnemy, callbackScope: this, loop: true });
         this.time.addEvent({ delay: 10000, callback: this.spawnPowerUp, callbackScope: this, loop: true });
-        this.time.delayedCall(60000, this.triggerBoss, [], this); // Boss appears after 1 minute
+        this.time.delayedCall(60000, this.triggerBoss, [], this);
     }
 
-    update() {
+    update(time) { // Pass time parameter
         if (this.isGameOver) return;
-        if (this.player.active) this.handlePlayerInput();
+        if (this.player.active) this.handlePlayerInput(time); // Pass time parameter
         this.cleanup();
     }
 
@@ -106,11 +107,15 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    handlePlayerInput() {
+    handlePlayerInput(time) { // Receive time parameter
         if (this.cursors.left.isDown) this.player.setVelocityX(-400);
         else if (this.cursors.right.isDown) this.player.setVelocityX(400);
         else this.player.setVelocityX(0);
-        if (Phaser.Input.Keyboard.JustDown(this.spacebar)) this.fireBullet();
+
+        if (this.spacebar.isDown && time > this.lastFired) {
+            this.fireBullet();
+            this.lastFired = time + 200; // 200ms fire rate
+        }
     }
 
     fireBullet() {
@@ -251,7 +256,7 @@ class GameScene extends Phaser.Scene {
             if (this.bossHealthBarContainer) this.bossHealthBarContainer.destroy();
             this.score += 1000;
             if (this.level === 5) {
-                this.isGameOver = true; // Stop further actions
+                this.isGameOver = true;
                 this.add.text(this.scale.width / 2, this.scale.height / 2, 'ALL STAGES CLEAR! YOU WIN!', { fontSize: '40px', fill: '#0F0' }).setOrigin(0.5);
                 this.time.delayedCall(5000, () => {
                     this.scene.start('TitleScene');
