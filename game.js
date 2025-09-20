@@ -66,15 +66,14 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.player, this.enemyBullets, this.playerHit, null, this);
 
         // --- Timers ---
-        const enemySpawnRate = Math.max(200, 1200 - (this.level * 100));
+        const enemySpawnRate = Math.max(200, 1300 - (this.level * 200));
         this.enemySpawner = this.time.addEvent({ delay: enemySpawnRate, callback: this.spawnEnemy, callbackScope: this, loop: true });
         this.time.addEvent({ delay: 10000, callback: this.spawnPowerUp, callbackScope: this, loop: true });
+        this.time.delayedCall(60000, this.triggerBoss, [], this);
     }
 
     update() {
         if (this.isGameOver) return;
-        const bossTriggerScore = 200 + (this.level * 300);
-        if (!this.bossActive && this.score >= bossTriggerScore) this.spawnBoss();
         if (this.player.active) this.handlePlayerInput();
         this.cleanup();
     }
@@ -141,9 +140,10 @@ class GameScene extends Phaser.Scene {
         const enemy = this.enemies.get(x, -50, 'enemy');
         if (enemy) {
             enemy.setActive(true).setVisible(true);
-            enemy.body.setVelocityY(150 + this.level * 10);
+            enemy.body.setVelocityY(150 + this.level * 15);
+            const fireDelay = Math.max(500, 3000 - (this.level * 400));
             enemy.fireTimer = this.time.addEvent({
-                delay: 2000,
+                delay: fireDelay,
                 callback: () => { if (enemy.active) this.enemyFire(enemy); },
                 loop: true
             });
@@ -170,9 +170,28 @@ class GameScene extends Phaser.Scene {
         }
     }
 
-    spawnBoss() {
+    triggerBoss() {
+        if (this.isGameOver) return;
         this.bossActive = true;
         this.enemySpawner.paused = true;
+
+        const warningText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Warning!', { fontSize: '80px', fill: '#ff0000', stroke: '#ffffff', strokeThickness: 6 }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: warningText,
+            alpha: 0,
+            duration: 500,
+            ease: 'Cubic.easeIn',
+            yoyo: true,
+            repeat: 2,
+            onComplete: () => {
+                warningText.destroy();
+                this.spawnBoss();
+            }
+        });
+    }
+
+    spawnBoss() {
         this.enemies.clear(true, true);
         this.boss = this.physics.add.sprite(this.scale.width / 2, -150, 'boss');
         this.boss.health = 40 + (this.level * 10);
@@ -181,18 +200,15 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.player, this.boss, this.playerHit, null, this);
         this.physics.add.overlap(this.bullets, this.boss, this.hitBoss, null, this);
         this.physics.add.overlap(this.player, this.bossBullets, this.playerHit, null, this);
-
-        // Create Boss Health Bar
         const barWidth = this.scale.width * 0.8;
         this.bossHealthBarBG = this.add.graphics().fillStyle(0x800000).fillRect(0, 0, barWidth, 20);
         this.bossHealthBar = this.add.graphics().fillStyle(0x00ff00).fillRect(0, 0, barWidth, 20);
-        this.bossHealthBarContainer = this.add.container((this.scale.width - barWidth) / 2, 30, [this.bossHealthBarBG, this.bossHealthBar]);
-
+        this.bossHealthBarContainer = this.add.container((this.scale.width - barWidth) / 2, this.scale.height - 50, [this.bossHealthBarBG, this.bossHealthBar]);
         this.tweens.add({
             targets: this.boss, y: 150, duration: 2000, ease: 'Power2',
             onComplete: () => {
                 this.tweens.add({ targets: this.boss, x: this.scale.width - 100, duration: 3000, ease: 'Sine.easeInOut', yoyo: true, repeat: -1 });
-                const fireRate = Math.max(500, 2500 - (this.level * 250));
+                const fireRate = Math.max(400, 2000 - (this.level * 250));
                 this.bossAttackTimer = this.time.addEvent({ delay: fireRate, callback: this.bossFire, callbackScope: this, loop: true });
             }
         });
@@ -200,10 +216,18 @@ class GameScene extends Phaser.Scene {
 
     bossFire() {
         if (!this.boss || !this.boss.active) return;
-        const bullet = this.bossBullets.get(this.boss.x, this.boss.y + 70, 'bossBullet');
-        if (bullet) {
-            bullet.setActive(true).setVisible(true);
-            this.physics.moveToObject(bullet, this.player, 250 + (this.level * 10));
+        const bulletsToFire = 1 + Math.floor((this.level - 1) / 2);
+        const spreadAngle = 15;
+        const baseAngle = Phaser.Math.Angle.Between(this.boss.x, this.boss.y, this.player.x, this.player.y);
+
+        for (let i = 0; i < bulletsToFire; i++) {
+            const bullet = this.bossBullets.get(this.boss.x, this.boss.y + 70, 'bossBullet');
+            if (bullet) {
+                bullet.setActive(true).setVisible(true);
+                const angleOffset = (i - (bulletsToFire - 1) / 2) * spreadAngle;
+                const finalAngle = baseAngle + Phaser.Math.DegToRad(angleOffset);
+                this.physics.velocityFromRotation(finalAngle, 250 + (this.level * 10), bullet.body.velocity);
+            }
         }
     }
 
@@ -219,11 +243,8 @@ class GameScene extends Phaser.Scene {
         boss.health -= 1;
         boss.setTint(0x999999);
         this.time.delayedCall(100, () => boss.clearTint());
-
-        // Update health bar
-        const healthPercentage = boss.health / boss.maxHealth;
+        const healthPercentage = Math.max(0, boss.health / boss.maxHealth);
         this.bossHealthBar.setScale(healthPercentage, 1);
-
         if (boss.health <= 0) {
             this.deactivate(boss);
             if (this.bossAttackTimer) this.bossAttackTimer.remove();
@@ -231,7 +252,9 @@ class GameScene extends Phaser.Scene {
             this.score += 1000;
             if (this.level === 5) {
                 this.add.text(this.scale.width / 2, this.scale.height / 2, 'ALL STAGES CLEAR! YOU WIN!', { fontSize: '40px', fill: '#0F0' }).setOrigin(0.5);
-                this.physics.pause();
+                this.time.delayedCall(5000, () => {
+                    this.scene.start('TitleScene');
+                });
             } else {
                 this.add.text(this.scale.width / 2, this.scale.height / 2, 'STAGE CLEAR!', { fontSize: '48px', fill: '#0F0' }).setOrigin(0.5);
                 this.time.delayedCall(3000, () => {
