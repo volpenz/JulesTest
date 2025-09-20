@@ -69,7 +69,7 @@ class GameScene extends Phaser.Scene {
         const enemySpawnRate = Math.max(200, 1300 - (this.level * 200));
         this.enemySpawner = this.time.addEvent({ delay: enemySpawnRate, callback: this.spawnEnemy, callbackScope: this, loop: true });
         this.time.addEvent({ delay: 10000, callback: this.spawnPowerUp, callbackScope: this, loop: true });
-        this.time.delayedCall(60000, this.triggerBoss, [], this);
+        this.time.delayedCall(60000, this.triggerBoss, [], this); // Boss appears after 1 minute
     }
 
     update() {
@@ -171,7 +171,7 @@ class GameScene extends Phaser.Scene {
     }
 
     triggerBoss() {
-        if (this.isGameOver) return;
+        if (this.isGameOver || this.bossActive) return;
         this.bossActive = true;
         this.enemySpawner.paused = true;
 
@@ -251,6 +251,7 @@ class GameScene extends Phaser.Scene {
             if (this.bossHealthBarContainer) this.bossHealthBarContainer.destroy();
             this.score += 1000;
             if (this.level === 5) {
+                this.isGameOver = true; // Stop further actions
                 this.add.text(this.scale.width / 2, this.scale.height / 2, 'ALL STAGES CLEAR! YOU WIN!', { fontSize: '40px', fill: '#0F0' }).setOrigin(0.5);
                 this.time.delayedCall(5000, () => {
                     this.scene.start('TitleScene');
