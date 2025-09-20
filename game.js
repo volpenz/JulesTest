@@ -1,70 +1,3 @@
-class PreloadScene extends Phaser.Scene {
-    constructor() {
-        super({ key: 'PreloadScene' });
-    }
-
-    preload() {
-        // --- Display Loading Bar ---
-        let progressBar = this.add.graphics();
-        let progressBox = this.add.graphics();
-        progressBox.fillStyle(0x222222, 0.8);
-        progressBox.fillRect(240, 270, 320, 50);
-
-        let width = this.cameras.main.width;
-        let height = this.cameras.main.height;
-        let loadingText = this.make.text({
-            x: width / 2,
-            y: height / 2 - 50,
-            text: 'Loading...',
-            style: {
-                font: '20px monospace',
-                fill: '#ffffff'
-            }
-        }).setOrigin(0.5);
-
-        this.load.on('progress', function (value) {
-            progressBar.clear();
-            progressBar.fillStyle(0xffffff, 1);
-            progressBar.fillRect(250, 280, 300 * value, 30);
-        });
-
-        this.load.on('complete', function () {
-            progressBar.destroy();
-            progressBox.destroy();
-            loadingText.destroy();
-        });
-
-        // --- Load Assets ---
-        // (The user needs to provide these assets in an 'assets' folder)
-        this.load.image('background', 'assets/darkPurple.png');
-        this.load.image('player', 'assets/playerShip1_blue.png');
-        this.load.image('bullet', 'assets/laserBlue01.png');
-        this.load.image('enemy', 'assets/enemyRed1.png');
-        this.load.image('boss', 'assets/enemyBlack5.png');
-        this.load.image('powerup', 'assets/powerupBlue_bolt.png');
-        this.load.spritesheet('explosion', 'assets/explosion.png', { frameWidth: 16, frameHeight: 16 });
-
-        this.load.audio('sfx_laser', 'assets/sfx_laser1.ogg');
-        this.load.audio('sfx_explosion', 'assets/sfx_explosion.ogg');
-        this.load.audio('sfx_powerup', 'assets/sfx_powerup.ogg');
-        this.load.audio('bgm', 'assets/bgm.ogg');
-    }
-
-    create() {
-        // --- Create Animations ---
-        this.anims.create({
-            key: 'explode',
-            frames: this.anims.generateFrameNumbers('explosion', { start: 0, end: 15 }),
-            frameRate: 24,
-            repeat: 0,
-            hideOnComplete: true
-        });
-
-        this.scene.start('TitleScene');
-    }
-}
-
-
 class TitleScene extends Phaser.Scene {
     constructor() {
         super({ key: 'TitleScene' });
@@ -94,31 +27,23 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
-        // --- Background ---
-        this.background = this.add.tileSprite(400, 300, 800, 600, 'background');
-
-        // --- Sound ---
-        this.sfx = {
-            laser: this.sound.add('sfx_laser'),
-            explosion: this.sound.add('sfx_explosion'),
-            powerup: this.sound.add('sfx_powerup')
-        };
-        if (!this.sound.get('bgm_music')) {
-            let music = this.sound.add('bgm', { loop: true, volume: 0.5 });
-            music.play();
-        }
+        // --- Procedural Textures ---
+        this.createTexture('player', 0xffffff, 30, 40);
+        this.createTexture('bullet', 0xffffff, 5, 20);
+        this.createTexture('enemy', 0x00ff00, 40, 40);
+        this.createTexture('boss', 0xff0000, 120, 100);
+        this.createTexture('bossBullet', 0xff0000, 15, 15, true);
+        this.createTexture('powerup', 0x0000ff, 30, 30, true);
 
         // --- Player ---
-        this.player = this.physics.add.sprite(400, 550, 'player').setScale(0.7);
+        this.player = this.physics.add.sprite(400, 550, 'player');
         this.player.setCollideWorldBounds(true);
-        this.player.body.setSize(this.player.width * 0.8, this.player.height * 0.8);
 
         // --- Groups ---
         this.bullets = this.physics.add.group({ classType: Phaser.GameObjects.Sprite, defaultKey: 'bullet', maxSize: 50 });
         this.enemies = this.physics.add.group({ classType: Phaser.GameObjects.Sprite, defaultKey: 'enemy', maxSize: 50 });
         this.powerUps = this.physics.add.group({ classType: Phaser.GameObjects.Sprite, defaultKey: 'powerup', maxSize: 5 });
-        this.bossBullets = this.physics.add.group({ classType: Phaser.GameObjects.Sprite, maxSize: 100 });
-        this.explosions = this.physics.add.group({ classType: Phaser.GameObjects.Sprite, defaultKey: 'explosion', maxSize: 50 });
+        this.bossBullets = this.physics.add.group({ classType: Phaser.GameObjects.Sprite, defaultKey: 'bossBullet', maxSize: 100 });
 
         // --- Spawners & UI ---
         const enemySpawnRate = Math.max(200, 1200 - (this.level * 100));
@@ -138,16 +63,24 @@ class GameScene extends Phaser.Scene {
 
     update() {
         if (this.isGameOver) return;
-        this.background.tilePositionY -= 0.5;
 
         const bossTriggerScore = 200 + (this.level * 300);
         if (!this.bossActive && this.score >= bossTriggerScore) this.spawnBoss();
 
-        this.handlePlayerInput();
+        if (this.player.active) this.handlePlayerInput();
         this.cleanup();
     }
 
-    // --- Helper Functions ---
+    createTexture(key, color, width, height, isCircle = false) {
+        if (this.textures.exists(key)) return;
+        let g = this.make.graphics();
+        g.fillStyle(color);
+        if (isCircle) g.fillCircle(width / 2, width / 2, width / 2);
+        else g.fillRect(0, 0, width, height);
+        g.generateTexture(key, width, height);
+        g.destroy();
+    }
+
     deactivate(gameObject) {
         if (!gameObject) return;
         gameObject.setActive(false).setVisible(false);
@@ -167,16 +100,6 @@ class GameScene extends Phaser.Scene {
         });
     }
 
-    playExplosion(x, y) {
-        let explosion = this.explosions.get(x, y, 'explosion');
-        if (explosion) {
-            explosion.setActive(true).setVisible(true).setScale(3).play('explode');
-            this.sfx.explosion.play({volume: 0.5});
-            explosion.on('animationcomplete', () => this.deactivate(explosion));
-        }
-    }
-
-    // --- Input & Spawning ---
     handlePlayerInput() {
         if (this.cursors.left.isDown) this.player.setVelocityX(-350);
         else if (this.cursors.right.isDown) this.player.setVelocityX(350);
@@ -186,7 +109,6 @@ class GameScene extends Phaser.Scene {
     }
 
     fireBullet() {
-        this.sfx.laser.play({volume: 0.3});
         if (this.playerPowerUpLevel === 1) {
             [-100, 0, 100].forEach(vx => this.fireSingleBullet(this.player.x, this.player.y - 30, vx, -500 + Math.abs(vx)/2));
         } else {
@@ -196,13 +118,13 @@ class GameScene extends Phaser.Scene {
 
     fireSingleBullet(x, y, vx, vy) {
         const bullet = this.bullets.get(x, y, 'bullet');
-        if (bullet) bullet.setActive(true).setVisible(true).setVelocity(vx, vy).setAngle(vx/10).body.setCollideWorldBounds(false);
+        if (bullet) bullet.setActive(true).setVisible(true).setVelocity(vx, vy).body.setCollideWorldBounds(false);
     }
 
     spawnEnemy() {
         const x = Phaser.Math.Between(20, 780);
         const enemy = this.enemies.get(x, -50, 'enemy');
-        if (enemy) enemy.setActive(true).setVisible(true).setVelocityY(100 + this.level * 10).setScale(0.8);
+        if (enemy) enemy.setActive(true).setVisible(true).setVelocityY(100 + this.level * 10);
     }
 
     spawnPowerUp() {
@@ -219,7 +141,6 @@ class GameScene extends Phaser.Scene {
         this.boss = this.physics.add.sprite(400, -150, 'boss');
         this.boss.health = 40 + (this.level * 10);
         this.boss.setCollideWorldBounds(true).setImmovable(true);
-        this.boss.body.setSize(this.boss.width * 0.9, this.boss.height * 0.9);
 
         this.physics.add.overlap(this.player, this.boss, this.playerHit, null, this);
         this.physics.add.overlap(this.bullets, this.boss, this.hitBoss, null, this);
@@ -237,16 +158,14 @@ class GameScene extends Phaser.Scene {
 
     bossFire() {
         if (!this.boss.active) return;
-        const bullet = this.bossBullets.get(this.boss.x, this.boss.y + 70, 'bullet');
+        const bullet = this.bossBullets.get(this.boss.x, this.boss.y + 70, 'bossBullet');
         if (bullet) {
-            bullet.setActive(true).setVisible(true).setScale(1.5).setTint(0xff8888);
+            bullet.setActive(true).setVisible(true);
             this.physics.moveToObject(bullet, this.player, 200 + (this.level * 10));
         }
     }
 
-    // --- Collision Handlers ---
     hitEnemy(bullet, enemy) {
-        this.playExplosion(enemy.x, enemy.y);
         this.deactivate(bullet);
         this.deactivate(enemy);
         this.score += 10;
@@ -254,15 +173,13 @@ class GameScene extends Phaser.Scene {
     }
 
     hitBoss(boss, bullet) {
-        this.playExplosion(bullet.x, bullet.y);
         this.deactivate(bullet);
         boss.health -= 1;
 
-        boss.setTint(0xff9999);
+        boss.setTint(0x999999);
         this.time.delayedCall(100, () => boss.clearTint());
 
         if (boss.health <= 0) {
-            this.playExplosion(boss.x, boss.y);
             this.deactivate(boss);
             if (this.bossAttackTimer) this.bossAttackTimer.remove();
             this.score += 1000;
@@ -270,7 +187,6 @@ class GameScene extends Phaser.Scene {
             if (this.level === 5) {
                 this.add.text(400, 300, 'ALL STAGES CLEAR! YOU WIN!', { fontSize: '32px', fill: '#0F0' }).setOrigin(0.5);
                 this.physics.pause();
-                this.sound.stopAll();
             } else {
                 this.add.text(400, 300, 'STAGE CLEAR!', { fontSize: '48px', fill: '#0F0' }).setOrigin(0.5);
                 this.time.delayedCall(3000, () => {
@@ -281,7 +197,6 @@ class GameScene extends Phaser.Scene {
     }
 
     collectPowerUp(player, powerUp) {
-        this.sfx.powerup.play();
         this.deactivate(powerUp);
         this.playerPowerUpLevel = 1;
         if (this.powerUpTimer) this.powerUpTimer.remove(false);
@@ -290,16 +205,14 @@ class GameScene extends Phaser.Scene {
 
     playerHit(player, projectile) {
         if (this.isGameOver) return;
-        this.playExplosion(player.x, player.y);
         this.isGameOver = true;
         this.physics.pause();
-        player.setTint(0xff0000);
+        this.deactivate(player);
 
         this.add.text(400, 300, 'GAME OVER', { fontSize: '64px', fill: '#F00' }).setOrigin(0.5);
         this.add.text(400, 400, 'クリックしてリトライ', { fontSize: '24px', fill: '#FFF' }).setOrigin(0.5);
 
         this.input.once('pointerdown', () => {
-            this.sound.stopAll();
             this.scene.start('TitleScene');
         });
     }
@@ -317,7 +230,7 @@ const config = {
             gravity: { y: 0 }
         }
     },
-    scene: [PreloadScene, TitleScene, GameScene]
+    scene: [TitleScene, GameScene]
 };
 
 const game = new Phaser.Game(config);
